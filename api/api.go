@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	log "github.com/akutz/gournal"
+	"k8s.io/klog"
 
 	"github.com/thecodeteam/goisilon/api/json"
 )
@@ -173,19 +175,34 @@ func New(
 	}
 
 	resp := &apiVerResponse{}
+	apiVersion := uint64(5)
+
 	if err := c.Get(ctx, "/platform/latest", "", nil, nil, resp); err != nil &&
 		!strings.HasPrefix(err.Error(), "json: ") {
-		return nil, err
+		c.apiv = uint8(apiVersion)
+		klog.Infof("cannot access to /platform/latest, set apiv = 5")
+		return c, nil
 	}
 
 	if resp.Latest != nil {
-		i, err := strconv.ParseUint(*resp.Latest, 10, 8)
-		if err != nil {
-			return nil, err
+		var err error
+		if strings.Contains(*resp.Latest, ".") {
+			apiv, _ := strconv.ParseFloat(*resp.Latest, 64)
+			// 若为小数，则向下取整
+			i := strconv.Itoa(int(math.Floor(apiv)))
+			apiVersion, err = strconv.ParseUint(i, 10, 8)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			apiVersion, err = strconv.ParseUint(*resp.Latest, 10, 8)
+			if err != nil {
+				return nil, err
+			}
 		}
-		c.apiv = uint8(i)
+		c.apiv = uint8(apiVersion)
 	} else {
-		c.apiv = 2
+		c.apiv = uint8(apiVersion)
 	}
 
 	return c, nil
